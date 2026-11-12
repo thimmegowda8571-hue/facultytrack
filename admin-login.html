@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacultyTrack | Admin Login</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #eef6f1;
+  color: #183153;
+}
+
+header {
+  background: #146c43;
+  color: white;
+  text-align: center;
+  padding: 28px 15px;
+}
+
+header h1 { margin: 0; font-size: 27px; }
+header p { margin-bottom: 0; font-size: 13px; }
+
+.container {
+  max-width: 420px;
+  margin: 35px auto;
+  padding: 20px;
+}
+
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 16px;
+  box-shadow: 0 5px 20px #00000012;
+}
+
+h2 { text-align: center; margin-top: 0; }
+
+.subtitle {
+  text-align: center;
+  color: #718096;
+  font-size: 13px;
+}
+
+label {
+  display: block;
+  margin-top: 17px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+input {
+  width: 100%;
+  padding: 13px;
+  margin-top: 7px;
+  border: 1px solid #ccd6e5;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 20px;
+  border: none;
+  border-radius: 8px;
+  background: #198754;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.6; }
+
+.link {
+  display: block;
+  text-align: center;
+  margin-top: 18px;
+  font-size: 14px;
+  color: #1763b1;
+  text-decoration: none;
+}
+
+#message {
+  text-align: center;
+  margin-top: 15px;
+  color: #b02a37;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  text-align: center;
+  color: #718096;
+  font-size: 12px;
+  margin-top: 25px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>FACULTYTRACK</h1>
+  <p>Administrator Portal</p>
+</header>
+
+<div class="container">
+  <div class="card">
+
+    <h2>Admin Login</h2>
+    <p class="subtitle">Authorized personnel only</p>
+
+    <label for="adminId">Admin ID</label>
+    <input type="text" id="adminId" placeholder="Enter Admin ID" autocomplete="off">
+
+    <label for="email">Admin Email</label>
+    <input type="email" id="email" placeholder="Enter admin email" autocomplete="username">
+
+    <label for="password">Password</label>
+    <input type="password" id="password" placeholder="Enter Password" autocomplete="current-password">
+
+    <button id="loginBtn" type="button">Admin Login</button>
+
+    <p id="message" role="status"></p>
+
+    <a class="link" href="index.html">← Back to Faculty Login</a>
+
+  </div>
+
+  <footer>© 2026 FacultyTrack | University Portal</footer>
+</div>
+
+<script type="module">
+import {
+  auth,
+  db,
+  signInWithEmailAndPassword,
+  doc,
+  getDoc,
+  signOut
+} from "./firebase.js";
+
+const message = document.getElementById("message");
+const loginBtn = document.getElementById("loginBtn");
+
+async function adminLogin() {
+  const adminId = document.getElementById("adminId").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!adminId || !email || !password) {
+    message.style.color = "#b02a37";
+    message.innerText = "Please fill Admin ID, Email and Password.";
+    return;
+  }
+
+  loginBtn.disabled = true;
+  message.style.color = "#1763b1";
+  message.innerText = "Verifying admin account...";
+
+  try {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+
+    const profileRef = doc(db, "faculty", credential.user.uid);
+    const profileSnap = await getDoc(profileRef);
+
+    if (!profileSnap.exists()) {
+      await signOut(auth);
+      throw new Error("Profile not found. Contact the system owner.");
+    }
+
+    const userData = profileSnap.data();
+
+    if (userData.role !== "admin") {
+      await signOut(auth);
+      throw new Error("Access denied. This account is not an administrator.");
+    }
+
+    if (String(userData.employee_id).trim().toLowerCase() !== adminId.toLowerCase()) {
+      await signOut(auth);
+      throw new Error("Admin ID does not match.");
+    }
+
+    message.style.color = "#198754";
+    message.innerText = "Login successful! Redirecting...";
+    window.location.href = "admin.html";
+
+  } catch (error) {
+    console.error(error);
+    message.style.color = "#b02a37";
+    message.innerText = error.message;
+  } finally {
+    loginBtn.disabled = false;
+  }
+}
+
+loginBtn.addEventListener("click", adminLogin);
+</script>
+
+</body>
+</html>

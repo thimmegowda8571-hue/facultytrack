@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacultyTrack | Login</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #eef3fb;
+  color: #183153;
+}
+
+header {
+  background: #153e75;
+  color: white;
+  text-align: center;
+  padding: 28px 15px;
+}
+
+header h1 { margin: 0; font-size: 27px; }
+header p { margin-bottom: 0; font-size: 13px; }
+
+.container {
+  max-width: 420px;
+  margin: 35px auto;
+  padding: 20px;
+}
+
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 16px;
+  box-shadow: 0 5px 20px #00000012;
+}
+
+h2 { text-align: center; margin-top: 0; }
+
+.subtitle {
+  text-align: center;
+  color: #718096;
+  font-size: 13px;
+}
+
+label {
+  display: block;
+  margin-top: 17px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+input {
+  width: 100%;
+  padding: 13px;
+  margin-top: 7px;
+  border: 1px solid #ccd6e5;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 20px;
+  border: none;
+  border-radius: 8px;
+  background: #1763b1;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.admin { background: #198754; }
+button:disabled { opacity: 0.6; }
+
+#message {
+  text-align: center;
+  margin-top: 15px;
+  color: #1763b1;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  text-align: center;
+  color: #718096;
+  font-size: 12px;
+  margin-top: 25px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>FACULTYTRACK</h1>
+  <p>Smart Faculty Career Advancement System</p>
+</header>
+
+<div class="container">
+  <div class="card">
+
+    <h2>Welcome!</h2>
+    <p class="subtitle">University Self-Appraisal Portal</p>
+
+    <label for="employee">Employee ID</label>
+    <input type="text" id="employee" placeholder="Enter Employee ID" autocomplete="off">
+
+    <label for="email">Registered Email</label>
+    <input type="email" id="email" placeholder="Enter registered email" autocomplete="username">
+
+    <label for="password">Password</label>
+    <input type="password" id="password" placeholder="Enter Password" autocomplete="current-password">
+
+    <button id="facultyBtn" type="button">Faculty Login</button>
+    <button id="adminBtn" class="admin" type="button">Admin Login</button>
+
+    <p id="message" role="status"></p>
+
+  </div>
+
+  <footer>© 2026 FacultyTrack | University Portal</footer>
+</div>
+
+<script type="module">
+import {
+  auth,
+  db,
+  signInWithEmailAndPassword,
+  doc,
+  getDoc,
+  signOut
+} from "./firebase.js";
+
+const message = document.getElementById("message");
+const facultyBtn = document.getElementById("facultyBtn");
+const adminBtn = document.getElementById("adminBtn");
+
+async function login(role) {
+  const employeeId = document.getElementById("employee").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!employeeId || !email || !password) {
+    message.innerText = "Please fill Employee ID, Email and Password.";
+    return;
+  }
+
+  facultyBtn.disabled = true;
+  adminBtn.disabled = true;
+  message.innerText = "Verifying account...";
+
+  try {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+
+    const profileRef = doc(db, "faculty", credential.user.uid);
+    const profileSnap = await getDoc(profileRef);
+
+    if (!profileSnap.exists()) {
+      await signOut(auth);
+      throw new Error("Profile not found. Contact the administrator.");
+    }
+
+    const userData = profileSnap.data();
+
+    if (userData.employee_id !== employeeId) {
+      await signOut(auth);
+      throw new Error("Employee ID does not match.");
+    }
+
+    if (userData.role !== role) {
+      await signOut(auth);
+      throw new Error("Incorrect login type.");
+    }
+
+    message.innerText = "Login successful!";
+
+    if (role === "faculty") {
+      window.location.href = "faculty.html";
+    } else {
+      window.location.href = "admin.html";
+    }
+
+  } catch (error) {
+    console.error(error);
+    message.innerText = error.message;
+  } finally {
+    facultyBtn.disabled = false;
+    adminBtn.disabled = false;
+  }
+}
+
+facultyBtn.addEventListener("click", () => login("faculty"));
+adminBtn.addEventListener("click", () => login("admin"));
+</script>
+
+</body>
+</html>

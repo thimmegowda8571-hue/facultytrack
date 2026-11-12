@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacultyTrack Admin Panel</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5fb;
+  color: #20334f;
+}
+
+header {
+  background: #153e75;
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h2 { margin: 0; }
+header p { margin: 4px 0 0; font-size: 13px; }
+
+.logout {
+  background: transparent;
+  border: 1px solid white;
+  color: white;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 0;
+}
+
+.container { max-width: 950px; margin: auto; padding: 18px; }
+.welcome { margin-bottom: 20px; }
+
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.stat { background: white; padding: 18px; border-radius: 12px; }
+.stat p { color: #718096; font-size: 13px; }
+.stat h2 { color: #1763b1; margin: 0; }
+
+.panel { background: white; padding: 18px; margin-top: 22px; border-radius: 12px; }
+
+input, select {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid #ccd6e5;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+button {
+  border: none;
+  padding: 10px 14px;
+  border-radius: 7px;
+  background: #1763b1;
+  color: white;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+button:disabled { opacity: 0.6; }
+
+.approve { background: #198754; }
+.reject { background: #dc3545; }
+
+.faculty-card {
+  border: 1px solid #e0e8f2;
+  padding: 14px;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+
+.faculty-card h3 { margin-top: 0; }
+
+.status {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 15px;
+  font-size: 12px;
+  background: #fff0ce;
+  color: #956000;
+}
+
+.approved-status { background: #d8f5e4; color: #14723b; }
+.correction-status { background: #fde2e4; color: #a12330; }
+.none-status { background: #e9eef5; color: #556; }
+
+.detail { color: #718096; font-size: 13px; line-height: 1.7; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.actions button { flex: 1; }
+
+.activity-list {
+  display: none;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f6f9fd;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.activity-list.open { display: block; }
+.activity-list div { border-bottom: 1px solid #e0e8f2; padding: 6px 0; }
+.activity-list div:last-child { border-bottom: none; }
+
+#msg { font-size: 13px; color: #1763b1; margin: 8px 0 0; overflow-wrap: anywhere; }
+
+footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <div>
+    <h2>FACULTYTRACK</h2>
+    <p>University Administrator Panel</p>
+  </div>
+  <button class="logout" id="logoutBtn" type="button">Logout</button>
+</header>
+
+<div class="container">
+
+<div class="welcome">
+  <h2>Admin Dashboard</h2>
+  <p>Manage and verify faculty self-appraisal records.</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><p>Total Faculty</p><h2 id="total">0</h2></div>
+  <div class="stat"><p>Total Submissions</p><h2 id="submissions">0</h2></div>
+  <div class="stat"><p>Pending Verification</p><h2 id="pending">0</h2></div>
+  <div class="stat"><p>Approved</p><h2 id="approved">0</h2></div>
+</div>
+
+<div class="panel">
+  <h3>Faculty Records</h3>
+
+  <input type="text" id="search" placeholder="Search faculty name or employee ID...">
+
+  <select id="sort">
+    <option value="name">Sort by Name</option>
+    <option value="empid">Sort by Employee ID</option>
+    <option value="date">Sort by Submission Date</option>
+    <option value="score">Sort by Appraisal Score</option>
+  </select>
+
+  <button id="allPdfBtn" type="button">Download PDF of All Records</button>
+  <p id="msg"></p>
+
+  <div id="facultyList"><p>Loading records...</p></div>
+</div>
+
+</div>
+
+<footer>FacultyTrack © 2026 | Administrator Portal</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script type="module">
+import {
+  auth, db, signOut, onAuthStateChanged,
+  doc, getDoc, collection, getDocs
+} from "./firebase.js";
+import {
+  writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+const POINTS_PER_ACTIVITY = 5;
+
+let facultyList = [];   // built from profiles + activities
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- Admin guard ----------
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = "admin-login.html"; return; }
+  try {
+    const snap = await getDoc(doc(db, "faculty", user.uid));
+    if (!snap.exists() || snap.data().role !== "admin") {
+      await signOut(auth);
+      window.location.href = "admin-login.html";
+      return;
+    }
+    await loadData();
+  } catch (e) {
+    console.error(e);
+    $("facultyList").textContent = "Error: " + e.message;
+  }
+});
+
+// ---------- Load real data ----------
+async function loadData() {
+  const [profSnap, actSnap] = await Promise.all([
+    getDocs(collection(db, "faculty")),
+    getDocs(collection(db, "activities"))
+  ]);
+
+  const map = {};
+  profSnap.docs.forEach((d) => {
+    const p = d.data();
+    if (p.role === "faculty") {
+      map[d.id] = {
+        uid: d.id,
+        name: p.name || "Unnamed",
+        id: p.employee_id || "-",
+        department: p.department || "-",
+        activities: []
+      };
+    }
+  });
+
+  actSnap.docs.forEach((d) => {
+    const a = { ref: d.id, ...d.data() };
+    if (!map[a.uid]) {
+      map[a.uid] = {
+        uid: a.uid, name: a.name || "Unknown", id: a.employee_id || "-",
+        department: "-", activities: []
+      };
+    }
+    map[a.uid].activities.push(a);
+  });
+
+  facultyList = Object.values(map).map((f) => {
+    const acts = f.activities;
+    const count = (t) => acts.filter((a) => a.type === t).length;
+    const dates = acts.map((a) => a.date || "").sort();
+    let status = "No Submissions";
+    if (acts.length) {
+      if (acts.some((a) => a.status === "Pending" || !a.status)) status = "Pending";
+      else if (acts.some((a) => a.status === "Correction Required")) status = "Correction Required";
+      else status = "Approved";
+    }
+    return {
+      ...f,
+      score: acts.length * POINTS_PER_ACTIVITY,
+      date: dates.length ? dates[dates.length - 1] : "-",
+      status,
+      teaching: count("Teaching"),
+      research: count("Research"),
+      seminars: count("Seminars"),
+      projects: count("Projects"),
+      events: count("Events")
+    };
+  });
+
+  display();
+}
+
+// ---------- Display ----------
+function statusClass(s) {
+  if (s === "Approved") return "status approved-status";
+  if (s === "Correction Required") return "status correction-status";
+  if (s === "No Submissions") return "status none-status";
+  return "status";
+}
+
+function getVisible() {
+  const q = $("search").value.toLowerCase().trim();
+  const sort = $("sort").value;
+
+  const records = facultyList.filter((f) =>
+    f.name.toLowerCase().includes(q) || f.id.toLowerCase().includes(q)
+  );
+
+  if (sort === "name") records.sort((a, b) => a.name.localeCompare(b.name));
+  if (sort === "empid") records.sort((a, b) => a.id.localeCompare(b.id));
+  if (sort === "date") records.sort((a, b) => b.date.localeCompare(a.date));
+  if (sort === "score") records.sort((a, b) => b.score - a.score);
+  return records;
+}
+
+function display() {
+  const records = getVisible();
+  let html = "";
+
+  records.forEach((f) => {
+    const actHtml = f.activities.length
+      ? f.activities
+          .slice()
+          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+          .map((a) =>
+            `<div><b>${esc(a.type)}:</b> ${esc(a.title)} (${esc(a.date)}) - ${esc(a.status || "Pending")}` +
+            (a.description ? `<br><span>${esc(a.description)}</span>` : "") + `</div>`)
+          .join("")
+      : "<div>No activities submitted.</div>";
+
+    html += `
+<div class="faculty-card">
+  <h3>${esc(f.name)}</h3>
+  <span class="${statusClass(f.status)}">${esc(f.status)}</span>
+
+  <p class="detail">
+    Employee ID: ${esc(f.id)}<br>
+    Department: ${esc(f.department)}<br>
+    Appraisal Score: ${f.score}<br>
+    Latest Activity Date: ${esc(f.date)}<br>
+    Teaching: ${f.teaching} | Research: ${f.research}<br>
+    Seminars: ${f.seminars} | Projects: ${f.projects} | Events: ${f.events}
+  </p>
+
+  <div class="actions">
+    <button data-act="view" data-uid="${esc(f.uid)}">View Details</button>
+    <button class="approve" data-act="Approved" data-uid="${esc(f.uid)}">Approve</button>
+    <button class="reject" data-act="Correction Required" data-uid="${esc(f.uid)}">Request Correction</button>
+    <button data-act="pdf" data-uid="${esc(f.uid)}">Download PDF</button>
+  </div>
+
+  <div class="activity-list" id="list-${esc(f.uid)}">${actHtml}</div>
+</div>`;
+  });
+
+  $("facultyList").innerHTML = html || "<p>No faculty records found.</p>";
+  updateStats();
+}
+
+function updateStats() {
+  const all = facultyList.flatMap((f) => f.activities);
+  $("total").textContent = facultyList.length;
+  $("submissions").textContent = all.length;
+  $("pending").textContent = all.filter((a) => a.status === "Pending" || !a.status).length;
+  $("approved").textContent = all.filter((a) => a.status === "Approved").length;
+}
+
+// ---------- Approve / Request correction ----------
+async function changeStatus(uid, status, btn) {
+  const f = facultyList.find((x) => x.uid === uid);
+  if (!f || !f.activities.length) {
+    $("msg").textContent = "This faculty has no activities to update.";
+    return;
+  }
+  btn.disabled = true;
+  $("msg").textContent = "Updating...";
+  try {
+    const batch = writeBatch(db);
+    f.activities.forEach((a) => {
+      batch.update(doc(db, "activities", a.ref), { status: status });
+    });
+    await batch.commit();
+    await loadData();
+    $("msg").textContent = f.name + ": status set to " + status;
+  } catch (e) {
+    console.error(e);
+    $("msg").textContent = "Update failed: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- PDF ----------
+function addFacultyToPdf(pdf, f, startY) {
+  let y = startY;
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  const width = pdf.internal.pageSize.getWidth() - margin * 2;
+
+  function line(text, size = 11, bold = false) {
+    pdf.setFontSize(size);
+    pdf.setFont("helvetica", bold ? "bold" : "normal");
+    const parts = pdf.splitTextToSize(String(text), width);
+    parts.forEach((p) => {
+      if (y > pageH - 15) { pdf.addPage(); y = 20; }
+      pdf.text(p, margin, y);
+      y += size * 0.5 + 2;
+    });
+  }
+
+  line("Name: " + f.name, 13, true);
+  line("Employee ID: " + f.id);
+  line("Department: " + f.department);
+  line("Appraisal Score: " + f.score);
+  line("Status: " + f.status);
+  line(`Teaching: ${f.teaching} | Research: ${f.research} | Seminars: ${f.seminars} | Projects: ${f.projects} | Events: ${f.events}`);
+  y += 2;
+  line("Activities:", 12, true);
+
+  if (!f.activities.length) line("No activities submitted.");
+  f.activities
+    .slice()
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .forEach((a, i) => {
+      line(`${i + 1}. [${a.type}] ${a.title} (${a.date}) - ${a.status || "Pending"}`);
+      if (a.description) line("    " + a.description, 10);
+    });
+
+  return y;
+}
+
+function makePdf(list, filename) {
+  if (!window.jspdf) {
+    $("msg").textContent = "PDF library could not load. Check your internet connection.";
+    return;
+  }
+  const pdf = new window.jspdf.jsPDF();
+  pdf.setFontSize(16);
+  pdf.setFont("helvetica", "bold");
+  pdf.text("FACULTY SELF APPRAISAL REPORT", 15, 18);
+  pdf.setFontSize(9);
+  pdf.setFont("helvetica", "normal");
+  pdf.text("Generated: " + new Date().toLocaleString(), 15, 24);
+
+  let y = 34;
+  list.forEach((f, i) => {
+    if (i > 0) { pdf.addPage(); y = 20; }
+    y = addFacultyToPdf(pdf, f, y);
+  });
+  pdf.save(filename);
+}
+
+// ---------- Events ----------
+$("facultyList").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const uid = btn.dataset.uid;
+  const act = btn.dataset.act;
+  const f = facultyList.find((x) => x.uid === uid);
+  if (!f) return;
+
+  if (act === "view") {
+    const box = document.getElementById("list-" + uid);
+    if (box) box.classList.toggle("open");
+  } else if (act === "pdf") {
+    makePdf([f], (f.id || "faculty") + "_Appraisal_Report.pdf");
+  } else if (act === "Approved" || act === "Correction Required") {
+    changeStatus(uid, act, btn);
+  }
+});
+
+$("allPdfBtn").addEventListener("click", () => {
+  const list = getVisible();
+  if (!list.length) { $("msg").textContent = "No records to download."; return; }
+  makePdf(list, "All_Faculty_Appraisal_Report.pdf");
+});
+
+$("search").addEventListener("input", display);
+$("sort").addEventListener("change", display);
+
+$("logoutBtn").addEventListener("click", async () => {
+  await signOut(auth);
+  window.location.href = "admin-login.html";
+});
+</script>
+
+</body>
+</html>

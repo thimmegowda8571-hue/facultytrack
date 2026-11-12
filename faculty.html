@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacultyTrack Dashboard</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5fb;
+  color: #20334f;
+}
+
+header {
+  background: #153e75;
+  color: white;
+  padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h2 { margin: 0; font-size: 20px; }
+header span { font-size: 12px; }
+
+.logout {
+  background: transparent;
+  border: 1px solid white;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.container { padding: 18px; max-width: 900px; margin: auto; }
+
+.welcome { margin-bottom: 20px; }
+.welcome h2 { margin-bottom: 5px; }
+.welcome p { color: #718096; font-size: 14px; }
+
+.profile {
+  background: white;
+  padding: 17px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.avatar {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  background: #dceaff;
+  color: #15549b;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+}
+
+.profile h3 { margin: 0 0 5px; }
+.profile p { margin: 0; color: #718096; font-size: 13px; }
+
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.stat { background: white; padding: 18px; border-radius: 12px; }
+.stat p { color: #718096; font-size: 13px; margin: 0 0 10px; }
+.stat h2 { margin: 0; color: #1763b1; }
+
+.section-title { margin: 25px 0 12px; }
+
+.menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+.menu button {
+  background: white;
+  border: 1px solid #e0e8f2;
+  padding: 17px 10px;
+  border-radius: 12px;
+  text-align: left;
+  color: #20334f;
+  font-size: 14px;
+}
+
+.menu button span { display: block; font-size: 23px; margin-bottom: 9px; }
+
+.panel { background: white; border-radius: 12px; padding: 18px; margin-top: 20px; }
+
+input, select, textarea {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0 15px;
+  border: 1px solid #ccd6e5;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+label { font-size: 13px; font-weight: bold; }
+
+.action {
+  background: #1763b1;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 7px;
+  width: 100%;
+  font-size: 15px;
+}
+
+.action:disabled { opacity: 0.6; }
+
+#activities { padding-left: 20px; line-height: 1.8; }
+.hidden { display: none; }
+
+#status { font-size: 13px; margin-top: 10px; color: #1763b1; overflow-wrap: anywhere; }
+
+footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h2>FACULTYTRACK</h2>
+  <div>
+    <span>Faculty Portal</span>
+    <button class="logout" id="logoutBtn" type="button">Logout</button>
+  </div>
+</header>
+
+<div class="container">
+
+<div class="welcome">
+  <h2>Faculty Dashboard</h2>
+  <p>Manage your academic achievements and career growth.</p>
+</div>
+
+<div class="profile">
+  <div class="avatar">👨‍🏫</div>
+  <div>
+    <h3 id="profName">Loading...</h3>
+    <p id="profEmp">Employee ID: -</p>
+    <p id="profDept">Department: -</p>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><p>Research Publications</p><h2 id="researchCount">0</h2></div>
+  <div class="stat"><p>Seminars Attended</p><h2 id="seminarCount">0</h2></div>
+  <div class="stat"><p>Projects</p><h2 id="projectCount">0</h2></div>
+  <div class="stat"><p>Appraisal Score</p><h2 id="score">0</h2></div>
+</div>
+
+<h3 class="section-title">Academic Activities</h3>
+
+<div class="menu">
+  <button type="button" data-type="Teaching"><span>📚</span>Teaching Activities</button>
+  <button type="button" data-type="Research"><span>🔬</span>Research Publications</button>
+  <button type="button" data-type="Seminars"><span>🎓</span>Seminars & Workshops</button>
+  <button type="button" data-type="Projects"><span>💻</span>Projects</button>
+  <button type="button" data-type="Events"><span>🏆</span>Event Participation</button>
+  <button type="button" id="myActivitiesBtn"><span>📋</span>My Activities</button>
+</div>
+
+<div class="panel hidden" id="activityForm">
+  <h3 id="formTitle">Add Activity</h3>
+
+  <label for="title">Activity Title</label>
+  <input id="title" placeholder="Enter activity title">
+
+  <label for="description">Description</label>
+  <textarea id="description" placeholder="Enter details"></textarea>
+
+  <label for="date">Date</label>
+  <input type="text" id="date" placeholder="YYYY-MM-DD (e.g. 2026-11-12)" inputmode="numeric" maxlength="10" autocomplete="off">
+
+  <button class="action" id="saveBtn" type="button">Save Activity</button>
+  <p id="status"></p>
+</div>
+
+<div class="panel hidden" id="activityList">
+  <h3>My Activities</h3>
+  <ul id="activities"></ul>
+</div>
+
+<div class="panel">
+  <h3>Career Advancement</h3>
+  <p>Maintain your academic achievements to track your professional progress.</p>
+  <button class="action" id="appraisalBtn" type="button">View Self-Appraisal</button>
+  <div id="appraisalResult"></div>
+</div>
+
+</div>
+
+<footer>FacultyTrack © 2026 | Smart Education Portal</footer>
+
+<script type="module">
+import {
+  auth, db, signOut, onAuthStateChanged,
+  doc, getDoc, collection, addDoc, query, where, getDocs, serverTimestamp
+} from "./firebase.js";
+
+let currentUser = null;
+let profile = null;
+let currentType = "";
+let activities = [];
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- Login guard ----------
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+  try {
+    const snap = await getDoc(doc(db, "faculty", user.uid));
+    if (!snap.exists() || snap.data().role !== "faculty") {
+      await signOut(auth);
+      window.location.href = "index.html";
+      return;
+    }
+    currentUser = user;
+    profile = snap.data();
+    $("profName").textContent = profile.name || "Faculty Member";
+    $("profEmp").textContent = "Employee ID: " + (profile.employee_id || "-");
+    $("profDept").textContent = "Department: " + (profile.department || "-");
+    await loadActivities();
+  } catch (e) {
+    console.error(e);
+    $("profName").textContent = "Error: " + e.message;
+  }
+});
+
+// ---------- Load from Firestore ----------
+async function loadActivities() {
+  const q = query(collection(db, "activities"), where("uid", "==", currentUser.uid));
+  const result = await getDocs(q);
+  activities = result.docs.map((d) => d.data());
+  activities.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  updateDashboard();
+}
+
+// ---------- UI ----------
+function showForm(type) {
+  currentType = type;
+  $("activityForm").classList.remove("hidden");
+  $("activityList").classList.add("hidden");
+  $("formTitle").textContent = "Add " + type + " Activity";
+  $("title").value = "";
+  $("description").value = "";
+  $("date").value = "";
+  $("status").textContent = "";
+}
+
+async function saveActivity() {
+  const title = $("title").value.trim();
+  const description = $("description").value.trim();
+  const date = $("date").value.trim();
+
+  if (!title || !date) {
+    $("status").textContent = "Please enter activity title and date.";
+    return;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date).getTime())) {
+    $("status").textContent = "Enter the date as YYYY-MM-DD, for example 2026-11-12.";
+    return;
+  }
+
+  $("saveBtn").disabled = true;
+  $("status").textContent = "Saving...";
+
+  try {
+    await addDoc(collection(db, "activities"), {
+      uid: currentUser.uid,
+      employee_id: profile.employee_id || "",
+      name: profile.name || "",
+      type: currentType,
+      title: title,
+      description: description,
+      date: date,
+      status: "Pending",
+      createdAt: serverTimestamp()
+    });
+
+    await loadActivities();
+    $("status").textContent = "Activity saved!";
+    setTimeout(() => $("activityForm").classList.add("hidden"), 800);
+  } catch (e) {
+    console.error(e);
+    $("status").textContent = "Save failed: " + e.message;
+  } finally {
+    $("saveBtn").disabled = false;
+  }
+}
+
+function updateDashboard() {
+  $("researchCount").textContent = activities.filter((a) => a.type === "Research").length;
+  $("seminarCount").textContent = activities.filter((a) => a.type === "Seminars").length;
+  $("projectCount").textContent = activities.filter((a) => a.type === "Projects").length;
+  $("score").textContent = activities.length * 5;
+}
+
+function showActivities() {
+  $("activityList").classList.remove("hidden");
+  $("activityForm").classList.add("hidden");
+
+  const list = $("activities");
+  list.innerHTML = "";
+
+  if (activities.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No activities added yet.";
+    list.appendChild(li);
+    return;
+  }
+
+  activities.forEach((a) => {
+    const li = document.createElement("li");
+    li.textContent = a.type + ": " + a.title + " (" + a.date + ") - " + (a.status || "Pending");
+    list.appendChild(li);
+  });
+}
+
+function showAppraisal() {
+  const points = activities.length * 5;
+  $("appraisalResult").innerHTML =
+    "<h2>" + points + " Points</h2>" +
+    "<p>Illustrative score based on 5 points per activity. Actual institutional criteria will be configured later.</p>";
+}
+
+// ---------- Date auto-format: typing 20261112 becomes 2026-11-12 ----------
+$("date").addEventListener("input", (e) => {
+  let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+  if (v.length > 6) v = v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6);
+  else if (v.length > 4) v = v.slice(0, 4) + "-" + v.slice(4);
+  e.target.value = v;
+});
+
+// ---------- Events ----------
+document.querySelectorAll(".menu button[data-type]").forEach((btn) => {
+  btn.addEventListener("click", () => showForm(btn.dataset.type));
+});
+$("myActivitiesBtn").addEventListener("click", showActivities);
+$("saveBtn").addEventListener("click", saveActivity);
+$("appraisalBtn").addEventListener("click", showAppraisal);
+$("logoutBtn").addEventListener("click", async () => {
+  await signOut(auth);
+  window.location.href = "index.html";
+});
+</script>
+
+</body>
+</html>
