@@ -101,6 +101,8 @@ input, select, textarea {
 
 label { font-size: 13px; font-weight: bold; }
 
+.hint { font-size: 12px; color: #718096; margin: -8px 0 15px; }
+
 .action {
   background: #1763b1;
   color: white;
@@ -114,6 +116,18 @@ label { font-size: 13px; font-weight: bold; }
 .action:disabled { opacity: 0.6; }
 
 #activities { padding-left: 20px; line-height: 1.8; }
+#activities li { margin-bottom: 8px; }
+
+.proof-link {
+  background: #e8f1fc;
+  color: #1763b1;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
 .hidden { display: none; }
 
 #status { font-size: 13px; margin-top: 10px; color: #1763b1; overflow-wrap: anywhere; }
@@ -178,6 +192,10 @@ footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
   <label for="date">Date</label>
   <input type="text" id="date" placeholder="YYYY-MM-DD (e.g. 2026-11-12)" inputmode="numeric" maxlength="10" autocomplete="off">
 
+  <label for="proof">Proof (certificate or hard copy scan)</label>
+  <input type="file" id="proof" accept="image/*,application/pdf">
+  <p class="hint">Photo or PDF. Photos are shrunk automatically. PDFs must be under 650 KB.</p>
+
   <button class="action" id="saveBtn" type="button">Save Activity</button>
   <p id="status"></p>
 </div>
@@ -203,6 +221,8 @@ import {
   auth, db, signOut, onAuthStateChanged,
   doc, getDoc, collection, addDoc, query, where, getDocs, serverTimestamp
 } from "./firebase.js";
+
+const MAX_B64 = 900000;   // keeps each Firestore document under its 1 MB limit
 
 let currentUser = null;
 let profile = null;
@@ -240,9 +260,90 @@ onAuthStateChanged(auth, async (user) => {
 async function loadActivities() {
   const q = query(collection(db, "activities"), where("uid", "==", currentUser.uid));
   const result = await getDocs(q);
-  activities = result.docs.map((d) => d.data());
+  activities = result.docs.map((d) => ({ id: d.id, ...d.data() }));
   activities.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   updateDashboard();
+}
+
+// ---------- File helpers ----------
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("Could not read the file."));
+    r.readAsDataURL(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not open the image."));
+    img.src = src;
+  });
+}
+
+// Shrinks a photo until it fits; returns base64 (no prefix)
+async function compressImage(file) {
+  const img = await loadImage(await readAsDataURL(file));
+  let maxSide = 1600;
+  let quality = 0.8;
+
+  for (let i = 0; i < 8; i++) {
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const b64 = canvas.toDataURL("image/jpeg", quality).split(",")[1];
+    if (b64.length <= MAX_B64) return b64;
+    maxSide = Math.round(maxSide * 0.8);
+    quality = Math.max(0.4, quality - 0.1);
+  }
+  throw new Error("Image is too large even after shrinking. Try a smaller photo.");
+}
+
+// Returns { mime, name, b64 } or null if no file chosen
+async function prepareProof(file) {
+  if (!file) return null;
+
+  if (file.type === "application/pdf") {
+    const b64 = (await readAsDataURL(file)).split(",")[1];
+    if (b64.length > MAX_B64) {
+      throw new Error("PDF is too large (limit about 650 KB). Use a smaller PDF or upload a photo instead.");
+    }
+    return { mime: "application/pdf", name: file.name, b64 };
+  }
+
+  if (file.type.startsWith("image/")) {
+    const b64 = await compressImage(file);
+    const base = file.name.replace(/\.[^.]+$/, "");
+    return { mime: "image/jpeg", name: base + ".jpg", b64 };
+  }
+
+  throw new Error("Only photos (JPG, PNG) and PDF files are allowed.");
+}
+
+// ---------- Open a saved proof ----------
+async function openProof(proofId) {
+  const win = window.open("", "_blank");   // opened first so the phone doesn't block it
+  try {
+    const snap = await getDoc(doc(db, "proofs", proofId));
+    if (!snap.exists()) throw new Error("Proof file not found.");
+    const p = snap.data();
+    const bin = atob(p.data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: p.mime }));
+    if (win) win.location.href = url; else window.location.href = url;
+  } catch (e) {
+    if (win) win.close();
+    alert("Could not open proof: " + e.message);
+  }
 }
 
 // ---------- UI ----------
@@ -254,6 +355,7 @@ function showForm(type) {
   $("title").value = "";
   $("description").value = "";
   $("date").value = "";
+  $("proof").value = "";
   $("status").textContent = "";
 }
 
@@ -261,6 +363,7 @@ async function saveActivity() {
   const title = $("title").value.trim();
   const description = $("description").value.trim();
   const date = $("date").value.trim();
+  const file = $("proof").files[0];
 
   if (!title || !date) {
     $("status").textContent = "Please enter activity title and date.";
@@ -273,9 +376,27 @@ async function saveActivity() {
   }
 
   $("saveBtn").disabled = true;
-  $("status").textContent = "Saving...";
+  $("status").textContent = file ? "Preparing proof file..." : "Saving...";
 
   try {
+    const proof = await prepareProof(file);
+    let proofId = "";
+    let proofName = "";
+
+    if (proof) {
+      $("status").textContent = "Uploading proof...";
+      const proofRef = await addDoc(collection(db, "proofs"), {
+        uid: currentUser.uid,
+        name: proof.name,
+        mime: proof.mime,
+        data: proof.b64,
+        createdAt: serverTimestamp()
+      });
+      proofId = proofRef.id;
+      proofName = proof.name;
+    }
+
+    $("status").textContent = "Saving...";
     await addDoc(collection(db, "activities"), {
       uid: currentUser.uid,
       employee_id: profile.employee_id || "",
@@ -284,6 +405,8 @@ async function saveActivity() {
       title: title,
       description: description,
       date: date,
+      proofId: proofId,
+      proofName: proofName,
       status: "Pending",
       createdAt: serverTimestamp()
     });
@@ -322,7 +445,22 @@ function showActivities() {
 
   activities.forEach((a) => {
     const li = document.createElement("li");
-    li.textContent = a.type + ": " + a.title + " (" + a.date + ") - " + (a.status || "Pending");
+    li.appendChild(document.createTextNode(
+      a.type + ": " + a.title + " (" + a.date + ") - " + (a.status || "Pending")
+    ));
+    if (a.proofId) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "proof-link";
+      b.textContent = "View proof";
+      b.addEventListener("click", () => openProof(a.proofId));
+      li.appendChild(b);
+    } else {
+      const s = document.createElement("span");
+      s.style.cssText = "color:#a0aec0;font-size:12px;margin-left:6px;";
+      s.textContent = "(no proof)";
+      li.appendChild(s);
+    }
     list.appendChild(li);
   });
 }
@@ -356,4 +494,4 @@ $("logoutBtn").addEventListener("click", async () => {
 </script>
 
 </body>
-</html>
+  </html>
