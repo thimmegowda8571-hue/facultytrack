@@ -71,6 +71,15 @@ button:disabled { opacity: 0.6; }
 .approve { background: #198754; }
 .reject { background: #dc3545; }
 
+.proof-btn {
+  background: #e8f1fc;
+  color: #1763b1;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin: 0 0 0 6px;
+}
+
 .faculty-card {
   border: 1px solid #e0e8f2;
   padding: 14px;
@@ -178,7 +187,7 @@ import {
 const $ = (id) => document.getElementById(id);
 const POINTS_PER_ACTIVITY = 5;
 
-let facultyList = [];   // built from profiles + activities
+let facultyList = [];
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -260,6 +269,24 @@ async function loadData() {
   display();
 }
 
+// ---------- Open a proof file ----------
+async function openProof(proofId) {
+  const win = window.open("", "_blank");
+  try {
+    const snap = await getDoc(doc(db, "proofs", proofId));
+    if (!snap.exists()) throw new Error("Proof file not found.");
+    const p = snap.data();
+    const bin = atob(p.data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: p.mime }));
+    if (win) win.location.href = url; else window.location.href = url;
+  } catch (e) {
+    if (win) win.close();
+    $("msg").textContent = "Could not open proof: " + e.message;
+  }
+}
+
 // ---------- Display ----------
 function statusClass(s) {
   if (s === "Approved") return "status approved-status";
@@ -294,9 +321,14 @@ function display() {
           .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
           .map((a) =>
             `<div><b>${esc(a.type)}:</b> ${esc(a.title)} (${esc(a.date)}) - ${esc(a.status || "Pending")}` +
+            (a.proofId
+              ? ` <button class="proof-btn" data-act="proof" data-proof="${esc(a.proofId)}">View proof</button>`
+              : ` <span style="color:#a0aec0;">(no proof)</span>`) +
             (a.description ? `<br><span>${esc(a.description)}</span>` : "") + `</div>`)
           .join("")
       : "<div>No activities submitted.</div>";
+
+    const withProof = f.activities.filter((a) => a.proofId).length;
 
     html += `
 <div class="faculty-card">
@@ -309,7 +341,8 @@ function display() {
     Appraisal Score: ${f.score}<br>
     Latest Activity Date: ${esc(f.date)}<br>
     Teaching: ${f.teaching} | Research: ${f.research}<br>
-    Seminars: ${f.seminars} | Projects: ${f.projects} | Events: ${f.events}
+    Seminars: ${f.seminars} | Projects: ${f.projects} | Events: ${f.events}<br>
+    Proofs attached: ${withProof} of ${f.activities.length}
   </p>
 
   <div class="actions">
@@ -393,6 +426,7 @@ function addFacultyToPdf(pdf, f, startY) {
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
     .forEach((a, i) => {
       line(`${i + 1}. [${a.type}] ${a.title} (${a.date}) - ${a.status || "Pending"}`);
+      line("    Proof: " + (a.proofId ? "Attached (" + (a.proofName || "file") + ")" : "Not attached"), 10);
       if (a.description) line("    " + a.description, 10);
     });
 
@@ -424,8 +458,14 @@ function makePdf(list, filename) {
 $("facultyList").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
-  const uid = btn.dataset.uid;
   const act = btn.dataset.act;
+
+  if (act === "proof") {
+    openProof(btn.dataset.proof);
+    return;
+  }
+
+  const uid = btn.dataset.uid;
   const f = facultyList.find((x) => x.uid === uid);
   if (!f) return;
 
@@ -455,4 +495,4 @@ $("logoutBtn").addEventListener("click", async () => {
 </script>
 
 </body>
-</html>
+  </html>
