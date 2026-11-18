@@ -80,6 +80,15 @@ button:disabled { opacity: 0.6; }
   margin: 0 0 0 6px;
 }
 
+.del-btn {
+  background: #dc3545;
+  color: white;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin: 0 0 0 6px;
+}
+
 .faculty-card {
   border: 1px solid #e0e8f2;
   padding: 14px;
@@ -118,8 +127,8 @@ button:disabled { opacity: 0.6; }
 }
 
 .activity-list.open { display: block; }
-.activity-list div { border-bottom: 1px solid #e0e8f2; padding: 6px 0; }
-.activity-list div:last-child { border-bottom: none; }
+.activity-list > div { border-bottom: 1px solid #e0e8f2; padding: 6px 0; }
+.activity-list > div:last-child { border-bottom: none; }
 
 #msg { font-size: 13px; color: #1763b1; margin: 8px 0 0; overflow-wrap: anywhere; }
 
@@ -178,16 +187,14 @@ footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
 <script type="module">
 import {
   auth, db, signOut, onAuthStateChanged,
-  doc, getDoc, collection, getDocs
+  doc, getDoc, collection, getDocs, deleteDoc, writeBatch
 } from "./firebase.js";
-import {
-  writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 const POINTS_PER_ACTIVITY = 5;
 
 let facultyList = [];
+const openLists = new Set();   // keeps "View Details" panels open after a refresh
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -287,6 +294,27 @@ async function openProof(proofId) {
   }
 }
 
+// ---------- Delete one activity (admin) ----------
+async function deleteActivity(ref, uid) {
+  const f = facultyList.find((x) => x.uid === uid);
+  const a = f && f.activities.find((x) => x.ref === ref);
+  if (!a) return;
+  if (!confirm('Delete "' + a.title + '" for ' + f.name + '? This cannot be undone.')) return;
+
+  $("msg").textContent = "Deleting...";
+  try {
+    await deleteDoc(doc(db, "activities", ref));
+    if (a.proofId) {
+      try { await deleteDoc(doc(db, "proofs", a.proofId)); } catch (e) { console.error(e); }
+    }
+    await loadData();
+    $("msg").textContent = "Deleted: " + a.title;
+  } catch (e) {
+    console.error(e);
+    $("msg").textContent = "Delete failed: " + e.message;
+  }
+}
+
 // ---------- Display ----------
 function statusClass(s) {
   if (s === "Approved") return "status approved-status";
@@ -324,11 +352,13 @@ function display() {
             (a.proofId
               ? ` <button class="proof-btn" data-act="proof" data-proof="${esc(a.proofId)}">View proof</button>`
               : ` <span style="color:#a0aec0;">(no proof)</span>`) +
+            ` <button class="del-btn" data-act="delact" data-ref="${esc(a.ref)}" data-uid="${esc(f.uid)}">Delete</button>` +
             (a.description ? `<br><span>${esc(a.description)}</span>` : "") + `</div>`)
           .join("")
       : "<div>No activities submitted.</div>";
 
     const withProof = f.activities.filter((a) => a.proofId).length;
+    const isOpen = openLists.has(f.uid) ? " open" : "";
 
     html += `
 <div class="faculty-card">
@@ -352,7 +382,7 @@ function display() {
     <button data-act="pdf" data-uid="${esc(f.uid)}">Download PDF</button>
   </div>
 
-  <div class="activity-list" id="list-${esc(f.uid)}">${actHtml}</div>
+  <div class="activity-list${isOpen}" id="list-${esc(f.uid)}">${actHtml}</div>
 </div>`;
   });
 
@@ -465,13 +495,21 @@ $("facultyList").addEventListener("click", (e) => {
     return;
   }
 
+  if (act === "delact") {
+    deleteActivity(btn.dataset.ref, btn.dataset.uid);
+    return;
+  }
+
   const uid = btn.dataset.uid;
   const f = facultyList.find((x) => x.uid === uid);
   if (!f) return;
 
   if (act === "view") {
     const box = document.getElementById("list-" + uid);
-    if (box) box.classList.toggle("open");
+    if (box) {
+      box.classList.toggle("open");
+      if (box.classList.contains("open")) openLists.add(uid); else openLists.delete(uid);
+    }
   } else if (act === "pdf") {
     makePdf([f], (f.id || "faculty") + "_Appraisal_Report.pdf");
   } else if (act === "Approved" || act === "Correction Required") {
