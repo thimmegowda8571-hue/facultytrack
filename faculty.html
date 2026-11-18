@@ -115,22 +115,53 @@ label { font-size: 13px; font-weight: bold; }
 
 .action:disabled { opacity: 0.6; }
 
-#activities { padding-left: 20px; line-height: 1.8; }
-#activities li { margin-bottom: 8px; }
+.secondary {
+  background: #e9eef5;
+  color: #20334f;
+  margin-top: 10px;
+}
 
-.proof-link {
-  background: #e8f1fc;
-  color: #1763b1;
-  border: none;
-  padding: 4px 10px;
+.item {
+  border: 1px solid #e0e8f2;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.item .meta { color: #718096; font-size: 12px; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
   border-radius: 12px;
   font-size: 12px;
-  margin-left: 6px;
+  background: #fff0ce;
+  color: #956000;
 }
+.badge.Approved { background: #d8f5e4; color: #14723b; }
+.badge.Correction { background: #fde2e4; color: #a12330; }
+
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.mini {
+  border: none;
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  background: #e8f1fc;
+  color: #1763b1;
+}
+.mini.edit { background: #1763b1; color: white; }
+.mini.del { background: #dc3545; color: white; }
+
+.locked { font-size: 12px; color: #14723b; margin-top: 8px; }
 
 .hidden { display: none; }
 
 #status { font-size: 13px; margin-top: 10px; color: #1763b1; overflow-wrap: anywhere; }
+#listMsg { font-size: 13px; color: #1763b1; overflow-wrap: anywhere; }
 
 footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
 </style>
@@ -194,15 +225,17 @@ footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
 
   <label for="proof">Proof (certificate or hard copy scan)</label>
   <input type="file" id="proof" accept="image/*,application/pdf">
-  <p class="hint">Photo or PDF. Photos are shrunk automatically. PDFs must be under 650 KB.</p>
+  <p class="hint" id="proofHint">Photo or PDF. Photos are shrunk automatically. PDFs must be under 650 KB.</p>
 
   <button class="action" id="saveBtn" type="button">Save Activity</button>
+  <button class="action secondary" id="cancelBtn" type="button">Cancel</button>
   <p id="status"></p>
 </div>
 
 <div class="panel hidden" id="activityList">
   <h3>My Activities</h3>
-  <ul id="activities"></ul>
+  <p id="listMsg"></p>
+  <div id="activities"></div>
 </div>
 
 <div class="panel">
@@ -219,7 +252,8 @@ footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
 <script type="module">
 import {
   auth, db, signOut, onAuthStateChanged,
-  doc, getDoc, collection, addDoc, query, where, getDocs, serverTimestamp
+  doc, getDoc, collection, addDoc, query, where, getDocs, serverTimestamp,
+  updateDoc, deleteDoc
 } from "./firebase.js";
 
 const MAX_B64 = 900000;   // keeps each Firestore document under its 1 MB limit
@@ -227,6 +261,7 @@ const MAX_B64 = 900000;   // keeps each Firestore document under its 1 MB limit
 let currentUser = null;
 let profile = null;
 let currentType = "";
+let editingId = null;
 let activities = [];
 
 const $ = (id) => document.getElementById(id);
@@ -263,6 +298,7 @@ async function loadActivities() {
   activities = result.docs.map((d) => ({ id: d.id, ...d.data() }));
   activities.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   updateDashboard();
+  if (!$("activityList").classList.contains("hidden")) renderActivities();
 }
 
 // ---------- File helpers ----------
@@ -284,7 +320,6 @@ function loadImage(src) {
   });
 }
 
-// Shrinks a photo until it fits; returns base64 (no prefix)
 async function compressImage(file) {
   const img = await loadImage(await readAsDataURL(file));
   let maxSide = 1600;
@@ -307,7 +342,6 @@ async function compressImage(file) {
   throw new Error("Image is too large even after shrinking. Try a smaller photo.");
 }
 
-// Returns { mime, name, b64 } or null if no file chosen
 async function prepareProof(file) {
   if (!file) return null;
 
@@ -328,9 +362,8 @@ async function prepareProof(file) {
   throw new Error("Only photos (JPG, PNG) and PDF files are allowed.");
 }
 
-// ---------- Open a saved proof ----------
 async function openProof(proofId) {
-  const win = window.open("", "_blank");   // opened first so the phone doesn't block it
+  const win = window.open("", "_blank");
   try {
     const snap = await getDoc(doc(db, "proofs", proofId));
     if (!snap.exists()) throw new Error("Proof file not found.");
@@ -346,17 +379,47 @@ async function openProof(proofId) {
   }
 }
 
-// ---------- UI ----------
-function showForm(type) {
-  currentType = type;
-  $("activityForm").classList.remove("hidden");
-  $("activityList").classList.add("hidden");
-  $("formTitle").textContent = "Add " + type + " Activity";
+// ---------- Form ----------
+function resetForm() {
   $("title").value = "";
   $("description").value = "";
   $("date").value = "";
   $("proof").value = "";
   $("status").textContent = "";
+}
+
+function showForm(type) {
+  editingId = null;
+  currentType = type;
+  resetForm();
+  $("activityForm").classList.remove("hidden");
+  $("activityList").classList.add("hidden");
+  $("formTitle").textContent = "Add " + type + " Activity";
+  $("saveBtn").textContent = "Save Activity";
+  $("proofHint").textContent = "Photo or PDF. Photos are shrunk automatically. PDFs must be under 650 KB.";
+}
+
+function startEdit(a) {
+  editingId = a.id;
+  currentType = a.type;
+  resetForm();
+  $("title").value = a.title || "";
+  $("description").value = a.description || "";
+  $("date").value = a.date || "";
+  $("activityForm").classList.remove("hidden");
+  $("activityList").classList.add("hidden");
+  $("formTitle").textContent = "Edit " + a.type + " Activity";
+  $("saveBtn").textContent = "Update Activity";
+  $("proofHint").textContent = a.proofId
+    ? "A proof is already attached. Choose a file only if you want to replace it."
+    : "No proof attached yet. You can add one now.";
+  $("activityForm").scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelForm() {
+  editingId = null;
+  resetForm();
+  $("activityForm").classList.add("hidden");
 }
 
 async function saveActivity() {
@@ -376,12 +439,13 @@ async function saveActivity() {
   }
 
   $("saveBtn").disabled = true;
+  $("cancelBtn").disabled = true;
   $("status").textContent = file ? "Preparing proof file..." : "Saving...";
 
   try {
     const proof = await prepareProof(file);
-    let proofId = "";
-    let proofName = "";
+    let newProofId = "";
+    let newProofName = "";
 
     if (proof) {
       $("status").textContent = "Uploading proof...";
@@ -392,36 +456,71 @@ async function saveActivity() {
         data: proof.b64,
         createdAt: serverTimestamp()
       });
-      proofId = proofRef.id;
-      proofName = proof.name;
+      newProofId = proofRef.id;
+      newProofName = proof.name;
     }
 
     $("status").textContent = "Saving...";
-    await addDoc(collection(db, "activities"), {
-      uid: currentUser.uid,
-      employee_id: profile.employee_id || "",
-      name: profile.name || "",
-      type: currentType,
-      title: title,
-      description: description,
-      date: date,
-      proofId: proofId,
-      proofName: proofName,
-      status: "Pending",
-      createdAt: serverTimestamp()
-    });
 
+    if (editingId) {
+      const old = activities.find((x) => x.id === editingId);
+      const changes = { title, description, date, status: "Pending" };
+      if (proof) {
+        changes.proofId = newProofId;
+        changes.proofName = newProofName;
+      }
+      await updateDoc(doc(db, "activities", editingId), changes);
+
+      if (proof && old && old.proofId) {
+        try { await deleteDoc(doc(db, "proofs", old.proofId)); } catch (e) { console.error(e); }
+      }
+      $("status").textContent = "Activity updated! Status is Pending for review.";
+    } else {
+      await addDoc(collection(db, "activities"), {
+        uid: currentUser.uid,
+        employee_id: profile.employee_id || "",
+        name: profile.name || "",
+        type: currentType,
+        title: title,
+        description: description,
+        date: date,
+        proofId: newProofId,
+        proofName: newProofName,
+        status: "Pending",
+        createdAt: serverTimestamp()
+      });
+      $("status").textContent = "Activity saved!";
+    }
+
+    editingId = null;
     await loadActivities();
-    $("status").textContent = "Activity saved!";
-    setTimeout(() => $("activityForm").classList.add("hidden"), 800);
+    setTimeout(() => $("activityForm").classList.add("hidden"), 900);
   } catch (e) {
     console.error(e);
     $("status").textContent = "Save failed: " + e.message;
   } finally {
     $("saveBtn").disabled = false;
+    $("cancelBtn").disabled = false;
   }
 }
 
+async function deleteActivity(a) {
+  if (!confirm('Delete "' + a.title + '"? This cannot be undone.')) return;
+  $("listMsg").textContent = "Deleting...";
+  try {
+    await deleteDoc(doc(db, "activities", a.id));
+    if (a.proofId) {
+      try { await deleteDoc(doc(db, "proofs", a.proofId)); } catch (e) { console.error(e); }
+    }
+    await loadActivities();
+    $("listMsg").textContent = "Deleted.";
+  } catch (e) {
+    console.error(e);
+    $("listMsg").textContent = "Delete failed: " + e.message;
+  }
+}
+
+// ---------- Dashboard ----------
 function updateDashboard() {
   $("researchCount").textContent = activities.filter((a) => a.type === "Research").length;
   $("seminarCount").textContent = activities.filter((a) => a.type === "Seminars").length;
@@ -429,40 +528,88 @@ function updateDashboard() {
   $("score").textContent = activities.length * 5;
 }
 
-function showActivities() {
-  $("activityList").classList.remove("hidden");
-  $("activityForm").classList.add("hidden");
-
-  const list = $("activities");
-  list.innerHTML = "";
+function renderActivities() {
+  const box = $("activities");
+  box.innerHTML = "";
 
   if (activities.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "No activities added yet.";
-    list.appendChild(li);
+    const p = document.createElement("p");
+    p.textContent = "No activities added yet.";
+    box.appendChild(p);
     return;
   }
 
   activities.forEach((a) => {
-    const li = document.createElement("li");
-    li.appendChild(document.createTextNode(
-      a.type + ": " + a.title + " (" + a.date + ") - " + (a.status || "Pending")
-    ));
+    const status = a.status || "Pending";
+    const item = document.createElement("div");
+    item.className = "item";
+
+    const head = document.createElement("div");
+    const strong = document.createElement("b");
+    strong.textContent = a.type + ": " + a.title;
+    head.appendChild(strong);
+    head.appendChild(document.createTextNode(" "));
+    const badge = document.createElement("span");
+    badge.className = "badge " + (status === "Correction Required" ? "Correction" : status);
+    badge.textContent = status;
+    head.appendChild(badge);
+    item.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = a.date + (a.description ? " - " + a.description : "");
+    item.appendChild(meta);
+
+    const row = document.createElement("div");
+    row.className = "row";
+
     if (a.proofId) {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "proof-link";
+      b.className = "mini";
       b.textContent = "View proof";
       b.addEventListener("click", () => openProof(a.proofId));
-      li.appendChild(b);
+      row.appendChild(b);
     } else {
       const s = document.createElement("span");
-      s.style.cssText = "color:#a0aec0;font-size:12px;margin-left:6px;";
+      s.className = "meta";
       s.textContent = "(no proof)";
-      li.appendChild(s);
+      row.appendChild(s);
     }
-    list.appendChild(li);
+
+    if (status !== "Approved") {
+      const e = document.createElement("button");
+      e.type = "button";
+      e.className = "mini edit";
+      e.textContent = "Edit";
+      e.addEventListener("click", () => startEdit(a));
+      row.appendChild(e);
+
+      const d = document.createElement("button");
+      d.type = "button";
+      d.className = "mini del";
+      d.textContent = "Delete";
+      d.addEventListener("click", () => deleteActivity(a));
+      row.appendChild(d);
+    }
+    item.appendChild(row);
+
+    if (status === "Approved") {
+      const l = document.createElement("div");
+      l.className = "locked";
+      l.textContent = "Approved: locked. Contact the administrator to change it.";
+      item.appendChild(l);
+    }
+
+    box.appendChild(item);
   });
+}
+
+function showActivities() {
+  $("activityList").classList.remove("hidden");
+  $("activityForm").classList.add("hidden");
+  $("listMsg").textContent = "";
+  renderActivities();
 }
 
 function showAppraisal() {
@@ -472,7 +619,7 @@ function showAppraisal() {
     "<p>Illustrative score based on 5 points per activity. Actual institutional criteria will be configured later.</p>";
 }
 
-// ---------- Date auto-format: typing 20261112 becomes 2026-11-12 ----------
+// ---------- Date auto-format ----------
 $("date").addEventListener("input", (e) => {
   let v = e.target.value.replace(/\D/g, "").slice(0, 8);
   if (v.length > 6) v = v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6);
@@ -486,6 +633,7 @@ document.querySelectorAll(".menu button[data-type]").forEach((btn) => {
 });
 $("myActivitiesBtn").addEventListener("click", showActivities);
 $("saveBtn").addEventListener("click", saveActivity);
+$("cancelBtn").addEventListener("click", cancelForm);
 $("appraisalBtn").addEventListener("click", showAppraisal);
 $("logoutBtn").addEventListener("click", async () => {
   await signOut(auth);
