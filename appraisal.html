@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacultyTrack | Self-Appraisal Form</title>
+
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Arial, sans-serif; background: #f1f5fb; color: #20334f; }
+header { background: #153e75; color: white; padding: 18px; display: flex; justify-content: space-between; align-items: center; }
+header h2 { margin: 0; font-size: 20px; }
+header a { color: white; font-size: 13px; text-decoration: none; border: 1px solid white; padding: 6px 12px; border-radius: 6px; }
+.container { padding: 18px; max-width: 800px; margin: auto; }
+.panel { background: white; border-radius: 12px; padding: 18px; margin-top: 18px; }
+.panel h3 { margin-top: 0; color: #153e75; }
+label { font-size: 13px; font-weight: bold; display: block; }
+input, select, textarea { width: 100%; padding: 12px; margin: 8px 0 15px; border: 1px solid #ccd6e5; border-radius: 7px; font-size: 14px; font-family: inherit; }
+input[readonly] { background: #eef2f7; color: #556; }
+textarea { min-height: 80px; }
+.hint { font-size: 12px; color: #718096; margin: -8px 0 15px; }
+.action { background: #1763b1; color: white; border: none; padding: 13px; border-radius: 7px; width: 100%; font-size: 15px; margin-top: 8px; }
+.action.green { background: #198754; }
+.action:disabled { opacity: 0.55; }
+.bar { height: 10px; background: #dde6f2; border-radius: 6px; overflow: hidden; }
+.bar div { height: 100%; width: 0; background: #198754; transition: width .3s; }
+.badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; background: #e9eef5; color: #556; }
+.badge.Submitted { background: #fff0ce; color: #956000; }
+.badge.Approved { background: #d8f5e4; color: #14723b; }
+.badge.Correction { background: #fde2e4; color: #a12330; }
+.counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.counts div { background: #f1f5fb; border-radius: 8px; padding: 10px; text-align: center; font-size: 12px; color: #718096; }
+.counts b { display: block; font-size: 20px; color: #1763b1; }
+.remark { background: #fde2e4; color: #a12330; padding: 12px; border-radius: 8px; font-size: 14px; margin-top: 14px; }
+.lockmsg { background: #fff0ce; color: #956000; padding: 12px; border-radius: 8px; font-size: 14px; margin-top: 14px; }
+#status { font-size: 13px; margin-top: 10px; color: #1763b1; overflow-wrap: anywhere; }
+footer { text-align: center; padding: 25px; color: #718096; font-size: 12px; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h2>SELF-APPRAISAL FORM</h2>
+  <a href="faculty.html">← Dashboard</a>
+</header>
+
+<div class="container">
+
+<div class="panel">
+  <label for="year">Academic Year</label>
+  <select id="year">
+    <option value="2025-26">2025-26</option>
+    <option value="2026-27" selected>2026-27</option>
+    <option value="2027-28">2027-28</option>
+  </select>
+  <p>Status: <span class="badge" id="badge">Loading...</span></p>
+  <div class="bar"><div id="bar"></div></div>
+  <p class="hint" id="barText">0% complete</p>
+  <div id="remarkBox"></div>
+  <div id="lockBox"></div>
+</div>
+
+<div class="panel">
+  <h3>1. Personal & Professional Details</h3>
+  <label>Name</label><input id="name" readonly>
+  <label>Employee ID</label><input id="empid" readonly>
+  <label>Department</label><input id="dept" readonly>
+  <label for="designation">Designation</label>
+  <input id="designation" placeholder="e.g. Assistant Professor">
+  <label for="joining">Date of Joining</label>
+  <input id="joining" placeholder="YYYY-MM-DD" inputmode="numeric" maxlength="10" autocomplete="off">
+  <label for="qualification">Highest Qualification</label>
+  <input id="qualification" placeholder="e.g. M.Tech, Ph.D.">
+  <label for="experience">Total Teaching Experience (years)</label>
+  <input id="experience" inputmode="decimal" placeholder="e.g. 6">
+</div>
+
+<div class="panel">
+  <h3>2. Teaching</h3>
+  <label for="courses">Courses Taught This Year</label>
+  <textarea id="courses" placeholder="List subjects, semesters and classes"></textarea>
+  <label for="hours">Average Teaching Hours per Week</label>
+  <input id="hours" inputmode="decimal" placeholder="e.g. 16">
+  <label for="feedback">Average Student Feedback (out of 10)</label>
+  <input id="feedback" inputmode="decimal" placeholder="e.g. 8.4">
+  <label for="passpct">Average Pass Percentage (%)</label>
+  <input id="passpct" inputmode="decimal" placeholder="e.g. 92">
+</div>
+
+<div class="panel">
+  <h3>3. Research & Academic Activities</h3>
+  <p class="hint" style="margin-top:0">Counted automatically from your Activity Log:</p>
+  <div class="counts" id="counts"></div>
+  <label for="research">Research Summary</label>
+  <textarea id="research" placeholder="Publications, ongoing work, collaborations"></textarea>
+  <label for="patents">Patents, Grants and Funded Projects</label>
+  <textarea id="patents" placeholder="Details, amounts, agencies (write 'None' if not applicable)"></textarea>
+</div>
+
+<div class="panel">
+  <h3>4. Administrative & Community Contributions</h3>
+  <label for="admin">Committees, Mentoring, Outreach, Institutional Duties</label>
+  <textarea id="admin" placeholder="Describe your roles and contributions"></textarea>
+</div>
+
+<div class="panel">
+  <h3>5. Self-Assessment</h3>
+  <label for="rating">Overall Self Rating</label>
+  <select id="rating">
+    <option value="">Select...</option>
+    <option value="5">5 - Outstanding</option>
+    <option value="4">4 - Very Good</option>
+    <option value="3">3 - Good</option>
+    <option value="2">2 - Needs Improvement</option>
+    <option value="1">1 - Unsatisfactory</option>
+  </select>
+  <label for="strengths">Key Strengths and Achievements</label>
+  <textarea id="strengths"></textarea>
+  <label for="goals">Goals for Next Year</label>
+  <textarea id="goals"></textarea>
+  <label for="training">Training or Support Needed</label>
+  <textarea id="training"></textarea>
+
+  <button class="action" id="draftBtn" type="button">Save Draft</button>
+  <button class="action green" id="submitBtn" type="button">Submit for Review</button>
+  <p id="status"></p>
+</div>
+
+</div>
+
+<footer>FacultyTrack © 2026 | Smart Education Portal</footer>
+
+<script type="module">
+import {
+  auth, db, signOut, onAuthStateChanged,
+  doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp
+} from "./firebase.js";
+
+const $ = (id) => document.getElementById(id);
+
+const FIELDS = ["designation","joining","qualification","experience","courses","hours",
+  "feedback","passpct","research","patents","admin","rating","strengths","goals","training"];
+const REQUIRED = [
+  ["designation","Designation"], ["qualification","Qualification"],
+  ["experience","Teaching experience"], ["courses","Courses taught"],
+  ["hours","Teaching hours"], ["rating","Self rating"], ["strengths","Key strengths"]
+];
+const TYPES = ["Teaching","Research","Seminars","Projects","Events"];
+
+let currentUser = null, profile = null, counts = {}, status = "New", remark = "";
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = "index.html"; return; }
+  try {
+    const snap = await getDoc(doc(db, "faculty", user.uid));
+    if (!snap.exists() || snap.data().role !== "faculty") {
+      await signOut(auth);
+      window.location.href = "index.html";
+      return;
+    }
+    currentUser = user;
+    profile = snap.data();
+    $("name").value = profile.name || "";
+    $("empid").value = profile.employee_id || "";
+    $("dept").value = profile.department || "";
+    await loadCounts();
+    await loadForm();
+  } catch (e) {
+    console.error(e);
+    $("status").textContent = "Error: " + e.message;
+  }
+});
+
+async function loadCounts() {
+  const r = await getDocs(query(collection(db, "activities"), where("uid", "==", currentUser.uid)));
+  counts = {};
+  TYPES.forEach((t) => counts[t] = 0);
+  r.docs.forEach((d) => { const t = d.data().type; if (t in counts) counts[t]++; });
+  $("counts").innerHTML = TYPES.map((t) => `<div><b>${counts[t]}</b>${t}</div>`).join("");
+}
+
+function docId() { return currentUser.uid + "_" + $("year").value; }
+
+async function loadForm() {
+  FIELDS.forEach((f) => $(f).value = "");
+  status = "New"; remark = "";
+  const snap = await getDoc(doc(db, "appraisals", docId()));
+  if (snap.exists()) {
+    const d = snap.data();
+    FIELDS.forEach((f) => $(f).value = d[f] ?? "");
+    status = d.status || "Draft";
+    remark = d.adminRemark || "";
+  }
+  applyStatus();
+  updateProgress();
+}
+
+function applyStatus() {
+  const locked = status === "Submitted" || status === "Approved";
+  FIELDS.forEach((f) => $(f).disabled = locked);
+  $("draftBtn").disabled = locked;
+  $("submitBtn").disabled = locked;
+
+  const b = $("badge");
+  b.textContent = status === "New" ? "Not started" : status;
+  b.className = "badge " + (status === "Correction Required" ? "Correction" : status);
+
+  $("remarkBox").innerHTML = "";
+  if (status === "Correction Required") {
+    const d = document.createElement("div");
+    d.className = "remark";
+    d.textContent = "Correction requested" + (remark ? ": " + remark : ".") + " Edit the form and submit again.";
+    $("remarkBox").appendChild(d);
+  }
+
+  $("lockBox").innerHTML = "";
+  if (locked) {
+    const d = document.createElement("div");
+    d.className = "lockmsg";
+    d.textContent = status === "Approved"
+      ? "This appraisal is approved and locked."
+      : "Submitted and waiting for administrator review. It is locked until reviewed.";
+    $("lockBox").appendChild(d);
+  }
+}
+
+function updateProgress() {
+  const filled = FIELDS.filter((f) => String($(f).value).trim() !== "").length;
+  const pct = Math.round((filled / FIELDS.length) * 100);
+  $("bar").style.width = pct + "%";
+  $("barText").textContent = pct + "% complete";
+}
+
+function collect() {
+  const data = {};
+  FIELDS.forEach((f) => data[f] = String($(f).value).trim());
+  return data;
+}
+
+async function save(submit) {
+  const data = collect();
+
+  if (submit) {
+    const missing = REQUIRED.filter(([f]) => !data[f]).map(([, label]) => label);
+    if (missing.length) {
+      $("status").textContent = "Please fill: " + missing.join(", ") + ".";
+      return;
+    }
+  }
+  if (data.joining && (!/^\d{4}-\d{2}-\d{2}$/.test(data.joining) || isNaN(new Date(data.joining).getTime()))) {
+    $("status").textContent = "Date of joining must be YYYY-MM-DD, for example 2019-07-01.";
+    return;
+  }
+  if (submit && !confirm("Submit this appraisal? You cannot edit it until the administrator reviews it.")) return;
+
+  $("draftBtn").disabled = true;
+  $("submitBtn").disabled = true;
+  $("status").textContent = "Saving...";
+
+  try {
+    const payload = {
+      ...data,
+      uid: currentUser.uid,
+      employee_id: profile.employee_id || "",
+      name: profile.name || "",
+      department: profile.department || "",
+      academicYear: $("year").value,
+      counts: counts,
+      status: submit ? "Submitted" : "Draft",
+      updatedAt: serverTimestamp()
+    };
+    if (submit) payload.submittedAt = serverTimestamp();
+
+    await setDoc(doc(db, "appraisals", docId()), payload, { merge: true });
+    $("status").textContent = submit ? "Submitted successfully!" : "Draft saved.";
+    await loadForm();
+  } catch (e) {
+    console.error(e);
+    $("status").textContent = "Save failed: " + e.message;
+    applyStatus();
+  }
+}
+
+// joining date auto-format
+$("joining").addEventListener("input", (e) => {
+  let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+  if (v.length > 6) v = v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6);
+  else if (v.length > 4) v = v.slice(0, 4) + "-" + v.slice(4);
+  e.target.value = v;
+});
+
+FIELDS.forEach((f) => $(f).addEventListener("input", updateProgress));
+$("year").addEventListener("change", loadForm);
+$("draftBtn").addEventListener("click", () => save(false));
+$("submitBtn").addEventListener("click", () => save(true));
+</script>
+
+</body>
+  </html>
